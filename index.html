@@ -48,8 +48,10 @@
         const statusText = document.getElementById('status');
         const resetBtn = document.getElementById('resetBtn');
 
-        let targetRot = { x: 0, y: 0, z: 0 };
-        let calibrationData = { alpha: 0, beta: 0, gamma: 0 };
+        // Use Three.js Quaternions for smooth, shortest-path rotation
+        let targetQuaternion = new THREE.Quaternion();
+        let calibrationQuaternion = new THREE.Quaternion();
+        let currentQuaternion = new THREE.Quaternion();
         let isCalibrated = false;
         let samples = { a: [], b: [], g: [] };
 
@@ -60,6 +62,18 @@
             }
 
             window.addEventListener('deviceorientation', (e) => {
+                const toRad = Math.PI / 180;
+                
+                // LANDSCAPE MAPPING
+                // Alpha: Yaw, Gamma: Pitch, Beta: Roll
+                const alpha = e.alpha * toRad; 
+                const beta = e.beta * toRad;   
+                const gamma = e.gamma * toRad; 
+
+                // Create a quaternion from the raw sensor data
+                // We use 'YXZ' order and adjust signs for Landscape
+                const euler = new THREE.Euler(-gamma, alpha, beta, 'YXZ');
+                
                 if (!isCalibrated) {
                     samples.a.push(e.alpha || 0);
                     samples.b.push(e.beta || 0);
@@ -67,16 +81,8 @@
                     return;
                 }
 
-                const toRad = Math.PI / 180;
-                
-                let a = (e.alpha - calibrationData.alpha);
-                let b = (e.beta - calibrationData.beta);
-                let g = (e.gamma - calibrationData.gamma);
-
-                // --- FINAL LANDSCAPE MAPPING ---
-                targetRot.y = a * toRad;  // Left/Right (Minus removed to fix swap)
-                targetRot.x = -g * toRad; // Up/Down (Gamma in Landscape)
-                targetRot.z = b * toRad;  // Tilt (Beta in Landscape)
+                // Apply the raw rotation to our target
+                targetQuaternion.setFromEuler(euler);
             });
 
             let count = 3;
@@ -86,7 +92,16 @@
                 if (count < 0) {
                     clearInterval(timer);
                     const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
-                    calibrationData = { alpha: avg(samples.a), beta: avg(samples.b), gamma: avg(samples.g) };
+                    
+                    // Capture the "Zero" orientation
+                    const avgEuler = new THREE.Euler(
+                        -avg(samples.g) * (Math.PI/180),
+                        avg(samples.a) * (Math.PI/180),
+                        avg(samples.b) * (Math.PI/180),
+                        'YXZ'
+                    );
+                    calibrationQuaternion.setFromEuler(avgEuler).invert();
+                    
                     isCalibrated = true;
                     statusText.innerText = "CALIBRATED";
                     startBtn.style.display = "none";
@@ -96,16 +111,12 @@
 
         startBtn.addEventListener('click', startSensors);
 
+        // --- THREE.JS SCENE ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-
-        const cameraGroup = new THREE.Group();
-        cameraGroup.rotation.order = 'YXZ'; 
-        scene.add(cameraGroup);
-        cameraGroup.add(camera);
 
         const geometry = new THREE.SphereGeometry(1000, 60, 40);
         geometry.scale(-1, 1, 1); 
@@ -127,16 +138,21 @@
         resetBtn.addEventListener('click', () => {
             isCalibrated = false;
             samples = { a: [], b: [], g: [] };
-            statusText.innerText = "HOLD STILL...";
-            startBtn.style.display = "block";
             startSensors();
         });
 
         function animate() {
             requestAnimationFrame(animate);
-            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.15;
-            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.15;
-            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.15;
+
+            if (isCalibrated) {
+                // 1. Calculate the relative rotation: Target * Inverted Calibration
+                const finalRotation = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
+                
+                // 2. SLERP: This is the magic. It smoothly moves to the target 
+                // using the shortest 3D path, preventing the "360 flip" bug.
+                camera.quaternion.slerp(finalRotation, 0.2); 
+            }
+
             renderer.render(scene, camera);
         }
         animate();
@@ -147,5 +163,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
+
 </body>
 </html>
