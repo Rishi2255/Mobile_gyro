@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Final</title>
+    <title>360 VR - Fixed Orientation</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -29,7 +29,7 @@
 
     <div id="overlay">
         <h1>360 VR LANDSCAPE</h1>
-        <div id="status">Hold phone horizontally (Landscape)</div>
+        <div id="status">Hold phone in Landscape Mode</div>
         <button id="startBtn" class="btn">START & CALIBRATE</button>
         <label for="videoUpload" class="btn" style="background: #4CAF50;">LOAD 360 VIDEO</label>
         <input type="file" id="videoUpload" accept="video/*" style="display:none">
@@ -61,18 +61,15 @@
 
             window.addEventListener('deviceorientation', (e) => {
                 const rad = Math.PI / 180;
-                
-                // Capture raw orientation
                 const z = e.alpha * rad; 
                 const x = e.beta * rad;  
                 const y = e.gamma * rad; 
 
                 const deviceQ = new THREE.Quaternion();
-                // Browser standard ZXY order
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Initial 90-degree correction for Landscape holding
+                // Initial Landscape correction
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -92,7 +89,6 @@
                     const sumQ = new THREE.Quaternion(0,0,0,0);
                     samples.forEach(q => { sumQ.x += q.x; sumQ.y += q.y; sumQ.z += q.z; sumQ.w += q.w; });
                     sumQ.normalize();
-                    
                     calibrationQuaternion.copy(sumQ).invert();
                     isCalibrated = true;
                     statusText.innerText = "CALIBRATED";
@@ -103,7 +99,6 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS SETUP ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -140,15 +135,15 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE AXIS REMAP FIX ---
-                // We are re-assigning the Quaternion components to match your 
-                // physical Landscape movement and flipping the signs where you 
-                // mentioned they were swapped.
-                
+                // --- THE 90-DEGREE SHIFT MAPPING ---
+                // Based on your specific feedback:
+                // 1. Up/Down (X) now comes from the inverted resultQ.y
+                // 2. Left/Right (Y) now comes from resultQ.x
+                // 3. Tilt (Z) now comes from resultQ.z
                 const worldQ = new THREE.Quaternion(
-                    -resultQ.z,  // Mapped to Up/Down (inverted)
-                    -resultQ.x,  // Mapped to Left/Right (inverted to fix swap)
-                    resultQ.y,   // Mapped to Shoulder Tilt
+                    -resultQ.y,  // Corrects Up/Down
+                    resultQ.x,   // Corrects Left/Right
+                    resultQ.z,   // Corrects Tilt
                     resultQ.w
                 );
                 
