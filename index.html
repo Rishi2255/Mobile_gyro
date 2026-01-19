@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gyro Video Stabilizer</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        #controls { z-index: 10; text-align: center; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        #video-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; perspective: 1000px; }
+        video { width: 80%; box-shadow: 0 0 50px rgba(0,255,255,0.2); transition: transform 0.1s linear; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <h2>Gyro Video Test</h2>
+        <input type="file" id="fileInput" accept="video/mp4"><br><br>
+        <button id="startBtn">1. Grant Permission & Start</button>
+    </div>
+
+    <div id="video-container">
+        <video id="myVideo" loop muted playsinline></video>
+    </div>
+
+    <script>
+        const video = document.getElementById('myVideo');
+        const fileInput = document.getElementById('fileInput');
+        const startBtn = document.getElementById('startBtn');
+        const container = document.body;
+
+        // Handle File Upload
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            const url = URL.createObjectURL(file);
+            video.src = url;
+        };
+
+        async function startSensors() {
+            // Request Fullscreen
+            if (container.requestFullscreen) container.requestFullscreen();
+
+            // Request iOS Sensor Permission
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                const response = await DeviceOrientationEvent.requestPermission();
+                if (response === 'granted') window.addEventListener('deviceorientation', handleMotion);
+            } else {
+                // Non-iOS devices
+                window.addEventListener('deviceorientation', handleMotion);
+            }
+
+            video.play();
+            document.getElementById('controls').style.display = 'none';
+        }
+
+        function handleMotion(event) {
+            // alpha: rotation around z-axis, beta: front-back, gamma: left-right
+            let beta = event.beta;  // -180 to 180
+            let gamma = event.gamma; // -90 to 90
+
+            // Apply rotation to video to counteract phone movement
+            // We use negative values to "stabilize" the image
+            video.style.transform = `rotateX(${-beta + 90}deg) rotateY(${gamma}deg)`;
+        }
+
+        startBtn.addEventListener('click', startSensors);
+    </script>
+</body>
+</html>
