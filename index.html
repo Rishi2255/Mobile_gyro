@@ -68,7 +68,7 @@
                 }
                 // AXIS MAPPING FIX
                 targetRot.y = -(e.alpha - calibrationData.alpha) * (Math.PI/180); // Yaw
-                targetRot.x = (e.beta - calibrationData.beta) * (Math.PI/180);    // Pitch
+                targetRot.x = -(e.beta - calibrationData.beta) * (Math.PI/180);    // Pitch
                 targetRot.z = (e.gamma - calibrationData.gamma) * (Math.PI/180); // Roll
             });
 
