@@ -109,20 +109,31 @@
         // Calibration logic
         function handleOrientation(event) {
             if (!isCalibrated) {
-                // Collect sensor data for averaging
                 samples.alpha.push(event.alpha || 0);
                 samples.beta.push(event.beta || 0);
                 samples.gamma.push(event.gamma || 0);
                 return;
             }
 
-            // Calculate relative movement (Current - Initial Offset)
-            const alpha = THREE.MathUtils.degToRad(event.alpha - calibrationData.alpha);
-            const beta = THREE.MathUtils.degToRad(event.beta - calibrationData.beta);
-            const gamma = THREE.MathUtils.degToRad(event.gamma - calibrationData.gamma);
+            // 1. Calculate relative angles
+            // Alpha = Yaw (Left/Right)
+            // Beta = Pitch (Up/Down)
+            // Gamma = Roll (Side Tilt)
+            let alpha = event.alpha - calibrationData.alpha;
+            let beta = event.beta - calibrationData.beta;
+            let gamma = event.gamma - calibrationData.gamma;
 
-            // Apply rotation using mobile-friendly order
-            camera.rotation.set(beta, alpha, -gamma, 'ZXY');
+            // 2. Convert to Radians
+            const a = THREE.MathUtils.degToRad(alpha);
+            const b = THREE.MathUtils.degToRad(beta);
+            const g = THREE.MathUtils.degToRad(gamma);
+
+            // 3. Apply rotation using 'YXZ' order 
+            // This is the standard for "Camera" behavior where:
+            // Y is vertical axis (looking around)
+            // X is horizontal axis (looking up/down)
+            // Z is depth axis (tilting side to side)
+            camera.rotation.set(b, -a, -g, 'YXZ');
         }
 
         async function startSequence() {
