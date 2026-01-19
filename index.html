@@ -69,7 +69,7 @@
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Correction for holding device horizontally
+                // Correction for Landscape grip
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -135,14 +135,15 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE VERIFIED MAPPING ---
-                // X: Pitch (Up/Down) -> resultQ.x
-                // Y: Yaw (Left/Right) -> resultQ.z
-                // Z: Roll (Tilt) -> resultQ.y
+                // --- THE SWAP FIX ---
+                // Based on your feedback, we swap X and Y inputs:
+                // Camera X (Up/Down) <- sensor Y
+                // Camera Y (Left/Right) <- sensor Z
+                // Camera Z (Tilt) <- sensor X
                 const worldQ = new THREE.Quaternion(
-                    resultQ.x,   // Up/Down
-                    resultQ.z,   // Left/Right
-                    resultQ.y,   // Shoulder Tilt
+                    resultQ.y,   // Now Up/Down
+                    resultQ.z,   // Now Left/Right
+                    resultQ.x,   // Now Shoulder Tilt
                     resultQ.w
                 );
                 
