@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Master</title>
+    <title>360 VR - Landscape Final</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -61,16 +61,18 @@
 
             window.addEventListener('deviceorientation', (e) => {
                 const rad = Math.PI / 180;
+                
                 // Capture raw orientation
                 const z = e.alpha * rad; 
                 const x = e.beta * rad;  
                 const y = e.gamma * rad; 
 
                 const deviceQ = new THREE.Quaternion();
+                // Browser standard ZXY order
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Correct for Landscape holding (90 deg offset)
+                // Initial 90-degree correction for Landscape holding
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -87,7 +89,6 @@
                 count--;
                 if (count < 0) {
                     clearInterval(timer);
-                    // Average Quaternions for perfect zeroing
                     const sumQ = new THREE.Quaternion(0,0,0,0);
                     samples.forEach(q => { sumQ.x += q.x; sumQ.y += q.y; sumQ.z += q.z; sumQ.w += q.w; });
                     sumQ.normalize();
@@ -137,21 +138,21 @@
         function animate() {
             requestAnimationFrame(animate);
             if (isCalibrated) {
-                // Apply the calibration offset
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // FINAL REMAP: Swapping Z and Y and flipping signs for Landscape
-                // resultQ.x = Up/Down
-                // resultQ.y = Roll (Shoulder Tilt) -> We move this to Tilt slot
-                // resultQ.z = Yaw (Left/Right) -> We move this to Yaw slot
+                // --- THE AXIS REMAP FIX ---
+                // We are re-assigning the Quaternion components to match your 
+                // physical Landscape movement and flipping the signs where you 
+                // mentioned they were swapped.
+                
                 const worldQ = new THREE.Quaternion(
-                    resultQ.x,    // Pitch
-                    -resultQ.z,   // Yaw (Left/Right) - mapped from hardware Z
-                    resultQ.y,    // Roll (Tilt) - mapped from hardware Y
+                    -resultQ.z,  // Mapped to Up/Down (inverted)
+                    -resultQ.x,  // Mapped to Left/Right (inverted to fix swap)
+                    resultQ.y,   // Mapped to Shoulder Tilt
                     resultQ.w
                 );
                 
-                camera.quaternion.slerp(worldQ, 0.2); 
+                camera.quaternion.slerp(worldQ, 0.15); 
             }
             renderer.render(scene, camera);
         }
@@ -162,6 +163,6 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-     </script>
+    </script>
 </body>
 </html>
