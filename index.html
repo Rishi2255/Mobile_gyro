@@ -107,6 +107,10 @@
         };
 
         // Calibration logic
+        // Add this to your variable declarations at the top
+        let currentQuaternion = new THREE.Quaternion();
+
+        // Update your handleOrientation function
         function handleOrientation(event) {
             if (!isCalibrated) {
                 samples.alpha.push(event.alpha || 0);
@@ -115,25 +119,22 @@
                 return;
             }
 
-            // 1. Calculate relative angles
-            // Alpha = Yaw (Left/Right)
-            // Beta = Pitch (Up/Down)
-            // Gamma = Roll (Side Tilt)
+            // 1. Calculate relative movement
+            // Note: We subtract calibration to "zero" it out
             let alpha = event.alpha - calibrationData.alpha;
             let beta = event.beta - calibrationData.beta;
             let gamma = event.gamma - calibrationData.gamma;
 
             // 2. Convert to Radians
-            const a = THREE.MathUtils.degToRad(alpha);
-            const b = THREE.MathUtils.degToRad(beta);
-            const g = THREE.MathUtils.degToRad(gamma);
+            // We invert Alpha (-degToRad) to fix the "Left/Right swapped" issue
+            const lon = THREE.MathUtils.degToRad(-alpha); 
+            const lat = THREE.MathUtils.degToRad(beta);
+            const phi = THREE.MathUtils.degToRad(gamma);
 
-            // 3. Apply rotation using 'YXZ' order 
-            // This is the standard for "Camera" behavior where:
-            // Y is vertical axis (looking around)
-            // X is horizontal axis (looking up/down)
-            // Z is depth axis (tilting side to side)
-            camera.rotation.set(b, -a, -g, 'YXZ');
+            // 3. Use Euler to Quaternion for maximum stability
+            // 'YXZ' is the standard order for a head-mounted display
+            const euler = new THREE.Euler(lat, lon, -phi, 'YXZ');
+            camera.quaternion.setFromEuler(euler);
         }
 
         async function startSequence() {
