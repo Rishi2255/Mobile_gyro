@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Fixed Landscape</title>
+    <title>360 VR - Landscape Final Corrected</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -69,7 +69,7 @@
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Correction for Landscape grip
+                // Correct for Landscape holding
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -135,15 +135,12 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE SWAP FIX ---
-                // Based on your feedback, we swap X and Y inputs:
-                // Camera X (Up/Down) <- sensor Y
-                // Camera Y (Left/Right) <- sensor Z
-                // Camera Z (Tilt) <- sensor X
+                // --- THE INVERSION FIX ---
+                // We added a minus sign (-) to resultQ.y to flip the Up/Down direction.
                 const worldQ = new THREE.Quaternion(
-                    resultQ.y,   // Now Up/Down
-                    resultQ.z,   // Now Left/Right
-                    resultQ.x,   // Now Shoulder Tilt
+                    -resultQ.y,  // Inverted: Up is now Up, Down is now Down
+                    resultQ.z,   // Left/Right
+                    resultQ.x,   // Shoulder Tilt
                     resultQ.w
                 );
                 
