@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Final</title>
+    <title>360 VR - Professional Landscape</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -16,7 +16,7 @@
             background: #2196F3; border: none; color: white;
             border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px;
         }
-        #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; text-transform: uppercase; }
+        #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; }
         #resetBtn {
             position: fixed; bottom: 20px; right: 20px; z-index: 100;
             width: 50px; height: 50px; border-radius: 50%;
@@ -48,10 +48,8 @@
         const statusText = document.getElementById('status');
         const resetBtn = document.getElementById('resetBtn');
 
-        // Use Three.js Quaternions for smooth, shortest-path rotation
         let targetQuaternion = new THREE.Quaternion();
         let calibrationQuaternion = new THREE.Quaternion();
-        let currentQuaternion = new THREE.Quaternion();
         let isCalibrated = false;
         let samples = { a: [], b: [], g: [] };
 
@@ -64,14 +62,17 @@
             window.addEventListener('deviceorientation', (e) => {
                 const toRad = Math.PI / 180;
                 
-                // LANDSCAPE MAPPING
-                // Alpha: Yaw, Gamma: Pitch, Beta: Roll
+                // IN LANDSCAPE:
+                // e.alpha is still Yaw (turning around)
+                // e.gamma becomes Pitch (looking up/down)
+                // e.beta becomes Roll (shoulder tilt)
+                
                 const alpha = e.alpha * toRad; 
                 const beta = e.beta * toRad;   
                 const gamma = e.gamma * toRad; 
 
-                // Create a quaternion from the raw sensor data
-                // We use 'YXZ' order and adjust signs for Landscape
+                // We use 'YXZ' order: Y(Yaw), X(Pitch), Z(Roll)
+                // We swap beta and gamma because the phone is sideways
                 const euler = new THREE.Euler(-gamma, alpha, beta, 'YXZ');
                 
                 if (!isCalibrated) {
@@ -81,7 +82,6 @@
                     return;
                 }
 
-                // Apply the raw rotation to our target
                 targetQuaternion.setFromEuler(euler);
             });
 
@@ -93,7 +93,7 @@
                     clearInterval(timer);
                     const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
                     
-                    // Capture the "Zero" orientation
+                    // Set the baseline "Zero" point
                     const avgEuler = new THREE.Euler(
                         -avg(samples.g) * (Math.PI/180),
                         avg(samples.a) * (Math.PI/180),
@@ -111,7 +111,7 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS SCENE ---
+        // --- THREE.JS SCENE SETUP ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -143,16 +143,11 @@
 
         function animate() {
             requestAnimationFrame(animate);
-
             if (isCalibrated) {
-                // 1. Calculate the relative rotation: Target * Inverted Calibration
+                // Shortest path rotation logic
                 const finalRotation = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
-                
-                // 2. SLERP: This is the magic. It smoothly moves to the target 
-                // using the shortest 3D path, preventing the "360 flip" bug.
                 camera.quaternion.slerp(finalRotation, 0.2); 
             }
-
             renderer.render(scene, camera);
         }
         animate();
@@ -163,6 +158,5 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
-
 </body>
 </html>
