@@ -3,184 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360° Gyro Calibrator</title>
+    <title>360 Mobile VR Player</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        #ui { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            text-align: center; color: white; z-index: 10; width: 80%; max-width: 400px;
-            background: rgba(0, 0, 0, 0.8); padding: 30px; border-radius: 20px; border: 1px solid #444;
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
+        #overlay { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; z-index: 10; background: rgba(0,0,0,0.9);
+            padding: 30px; border-radius: 15px; border: 2px solid #444; width: 85%;
         }
-
-        #videoUpload { margin: 20px 0; color: #ccc; }
-
-        button { 
-            padding: 15px 40px; font-size: 18px; font-weight: bold; cursor: pointer; 
-            background: #007bff; color: white; border: none; border-radius: 50px;
-            transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,123,255,0.4);
+        .btn {
+            display: block; width: 100%; padding: 15px; margin: 10px 0;
+            background: #2196F3; border: none; color: white;
+            border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px;
         }
-
-        button:disabled { background: #555; cursor: wait; box-shadow: none; }
-
-        #instructions { font-size: 14px; color: #aaa; margin-top: 15px; line-height: 1.4; }
+        #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; }
+        #resetBtn {
+            position: fixed; bottom: 30px; right: 30px; z-index: 100;
+            width: 60px; height: 60px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3); border: 2px solid white;
+            color: white; font-size: 24px; cursor: pointer; display: none;
+        }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <h1>360° VR Player</h1>
-        <p>Select your .mp4 file to begin</p>
-        <input type="file" id="videoUpload" accept="video/*"><br>
-        <button id="startBtn">Start & Calibrate</button>
-        <div id="instructions">
-            After clicking, hold the phone perfectly still at eye level for 3 seconds to zero the sensors.
-        </div>
+    <div id="overlay">
+        <h1>MOBILE VR</h1>
+        <div id="status">Hold phone still and press start</div>
+        <button id="startBtn" class="btn">1. START & CALIBRATE</button>
+        <label for="videoUpload" class="btn" style="background: #4CAF50;">2. LOAD 360 VIDEO</label>
+        <input type="file" id="videoUpload" accept="video/*" style="display:none">
     </div>
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+    <button id="resetBtn">🔄</button>
+    <video id="videoSource" loop crossorigin="anonymous" playsinline style="display:none"></video>
 
-    <script type="module">
-        import * as THREE from 'three';
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 
-        let scene, camera, renderer, video, texture;
-        let isCalibrated = false;
-        let calibrationData = { alpha: 0, beta: 0, gamma: 0 };
-        let samples = { alpha: [], beta: [], gamma: [] };
-
-        const ui = document.getElementById('ui');
-        const startBtn = document.getElementById('startBtn');
+    <script>
+        const video = document.getElementById('videoSource');
+        const overlay = document.getElementById('overlay');
         const fileInput = document.getElementById('videoUpload');
+        const startBtn = document.getElementById('startBtn');
+        const statusText = document.getElementById('status');
+        const resetBtn = document.getElementById('resetBtn');
 
-        function init() {
-            // 1. Scene Setup
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1100);
-            camera.target = new THREE.Vector3(0, 0, 0);
+        let targetRot = { x: 0, y: 0, z: 0 };
+        let calibrationData = { alpha: 0, beta: 0, gamma: 0 };
+        let isCalibrated = false;
+        let samples = { a: [], b: [], g: [] };
 
-            // 2. Renderer Setup
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
-
-            // 3. Create the 360 Sphere
-            const geometry = new THREE.SphereGeometry(500, 60, 40);
-            geometry.scale(-1, 1, 1); // Flip sphere to see from inside
-
-            video = document.createElement('video');
-            video.loop = true;
-            video.muted = false; 
-            video.playsInline = true;
-
-            texture = new THREE.VideoTexture(video);
-            texture.colorSpace = THREE.SRGBColorSpace;
-            
-            const material = new THREE.MeshBasicMaterial({ map: texture });
-            const sphere = new THREE.Mesh(geometry, material);
-            scene.add(sphere);
-
-            window.addEventListener('resize', onWindowResize);
-            animate();
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        // Handle File Upload
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                video.src = URL.createObjectURL(file);
-                video.load();
-            }
-        };
-
-        // Calibration logic
-        // Add this to your variable declarations at the top
-        let currentQuaternion = new THREE.Quaternion();
-
-        // Update your handleOrientation function
-        function handleOrientation(event) {
-            if (!isCalibrated) {
-                samples.alpha.push(event.alpha || 0);
-                samples.beta.push(event.beta || 0);
-                samples.gamma.push(event.gamma || 0);
-                return;
-            }
-
-            // 1. Calculate relative movement
-            // Note: We subtract calibration to "zero" it out
-            let alpha = event.alpha - calibrationData.alpha;
-            let beta = event.beta - calibrationData.beta;
-            let gamma = event.gamma - calibrationData.gamma;
-
-            // 2. Convert to Radians
-            // We invert Alpha (-degToRad) to fix the "Left/Right swapped" issue
-            const lon = THREE.MathUtils.degToRad(-alpha); 
-            const lat = THREE.MathUtils.degToRad(beta);
-            const phi = THREE.MathUtils.degToRad(gamma);
-
-            // 3. Use Euler to Quaternion for maximum stability
-            // 'YXZ' is the standard order for a head-mounted display
-            const euler = new THREE.Euler(lat, lon, -phi, 'YXZ');
-            camera.quaternion.setFromEuler(euler);
-        }
-
-        async function startSequence() {
-            if (!video.src) { alert("Please select a video file first."); return; }
-
-            // Permission check for iOS
+        // --- SENSORS ---
+        async function startSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') return;
-                } catch (err) { console.error(err); }
+                const resp = await DeviceOrientationEvent.requestPermission();
+                if (resp !== 'granted') return;
             }
+            window.addEventListener('deviceorientation', (e) => {
+                if (!isCalibrated) {
+                    samples.a.push(e.alpha || 0);
+                    samples.b.push(e.beta || 0);
+                    samples.g.push(e.gamma || 0);
+                    return;
+                }
+                // AXIS MAPPING FIX
+                targetRot.y = -(e.alpha - calibrationData.alpha) * (Math.PI/180); // Yaw
+                targetRot.x = (e.beta - calibrationData.beta) * (Math.PI/180);    // Pitch
+                targetRot.z = (e.gamma - calibrationData.gamma) * (Math.PI/180); // Roll
+            });
 
-            window.addEventListener('deviceorientation', handleOrientation);
-
-            // Start 3-second countdown
-            startBtn.disabled = true;
             let count = 3;
             const timer = setInterval(() => {
-                startBtn.innerText = `Calibrating: ${count}...`;
+                statusText.innerText = `CALIBRATING: ${count}...`;
                 count--;
                 if (count < 0) {
                     clearInterval(timer);
-                    finishCalibration();
+                    const avg = arr => arr.reduce((a,b) => a+b, 0) / arr.length;
+                    calibrationData = { alpha: avg(samples.a), beta: avg(samples.b), gamma: avg(samples.g) };
+                    isCalibrated = true;
+                    statusText.innerText = "READY";
+                    startBtn.style.display = "none";
                 }
             }, 1000);
         }
 
-        function finishCalibration() {
-            const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-            
-            calibrationData.alpha = avg(samples.alpha);
-            calibrationData.beta = avg(samples.beta);
-            calibrationData.gamma = avg(samples.gamma);
+        startBtn.addEventListener('click', startSensors);
 
-            isCalibrated = true;
-            ui.style.display = 'none';
-            video.play();
-            
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen();
+        // --- THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const cameraGroup = new THREE.Group();
+        cameraGroup.rotation.order = 'YXZ'; // Important for mobile sensors
+        scene.add(cameraGroup);
+        cameraGroup.add(camera);
+
+        const geometry = new THREE.SphereGeometry(1000, 60, 40);
+        geometry.scale(-1, 1, 1); 
+        const videoTexture = new THREE.VideoTexture(video);
+        const sphere = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: videoTexture }));
+        scene.add(sphere);
+
+        fileInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                video.src = URL.createObjectURL(file);
+                video.play();
+                overlay.style.display = 'none';
+                resetBtn.style.display = 'block';
+                if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             }
-        }
+        });
 
-        startBtn.addEventListener('click', startSequence);
-        init();
+        resetBtn.addEventListener('click', () => {
+            isCalibrated = false;
+            samples = { a: [], b: [], g: [] };
+            startSensors();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            // Smooth Interpolation (Slerp-like)
+            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.15;
+            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.15;
+            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.15;
+            renderer.render(scene, camera);
+        }
+        animate();
     </script>
 </body>
 </html>
