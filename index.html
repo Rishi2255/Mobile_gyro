@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Fixed Landscape</title>
+    <title>360 VR - Landscape Master</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -17,18 +17,25 @@
             border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px;
         }
         #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; }
+        #resetBtn {
+            position: fixed; bottom: 20px; right: 20px; z-index: 100;
+            width: 50px; height: 50px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2); border: 1px solid white;
+            color: white; font-size: 20px; cursor: pointer; display: none;
+        }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1>360 VR SENSOR FIX</h1>
-        <div id="status">Hold phone in Landscape (Buttons on right/left)</div>
+        <h1>360 VR LANDSCAPE</h1>
+        <div id="status">Hold phone horizontally (Landscape)</div>
         <button id="startBtn" class="btn">START & CALIBRATE</button>
         <label for="videoUpload" class="btn" style="background: #4CAF50;">LOAD 360 VIDEO</label>
         <input type="file" id="videoUpload" accept="video/*" style="display:none">
     </div>
 
+    <button id="resetBtn">🔄</button>
     <video id="videoSource" loop crossorigin="anonymous" playsinline style="display:none"></video>
 
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
@@ -39,14 +46,12 @@
         const fileInput = document.getElementById('videoUpload');
         const startBtn = document.getElementById('startBtn');
         const statusText = document.getElementById('status');
+        const resetBtn = document.getElementById('resetBtn');
 
         let targetQuaternion = new THREE.Quaternion();
         let calibrationQuaternion = new THREE.Quaternion();
         let isCalibrated = false;
         let samples = [];
-
-        // Constants for conversion
-        const rad = Math.PI / 180;
 
         async function startSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -55,27 +60,24 @@
             }
 
             window.addEventListener('deviceorientation', (e) => {
-                // THE CORE FIX:
-                // We create a quaternion based on the RAW sensor data
-                // Browser 'DeviceOrientation' uses Z-X-Y intrinsic ordering
+                const rad = Math.PI / 180;
+                // Capture raw orientation
                 const z = e.alpha * rad; 
                 const x = e.beta * rad;  
                 const y = e.gamma * rad; 
 
-                const deviceQuaternion = new THREE.Quaternion();
+                const deviceQ = new THREE.Quaternion();
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
-                deviceQuaternion.setFromEuler(euler);
+                deviceQ.setFromEuler(euler);
 
-                // We rotate the sensor frame 90 degrees around the Z axis 
-                // to account for Landscape holding
-                const landscapeCorrection = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
-                const finalQ = deviceQuaternion.multiply(landscapeCorrection);
+                // Correct for Landscape holding (90 deg offset)
+                const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+                const finalQ = deviceQ.multiply(landscapeCorr);
 
                 if (!isCalibrated) {
                     samples.push(finalQ.clone());
                     return;
                 }
-
                 targetQuaternion.copy(finalQ);
             });
 
@@ -85,12 +87,9 @@
                 count--;
                 if (count < 0) {
                     clearInterval(timer);
-                    
-                    // Average the samples for calibration
-                    const sumQ = new THREE.Quaternion(0, 0, 0, 0);
-                    samples.forEach(q => {
-                        sumQ.x += q.x; sumQ.y += q.y; sumQ.z += q.z; sumQ.w += q.w;
-                    });
+                    // Average Quaternions for perfect zeroing
+                    const sumQ = new THREE.Quaternion(0,0,0,0);
+                    samples.forEach(q => { sumQ.x += q.x; sumQ.y += q.y; sumQ.z += q.z; sumQ.w += q.w; });
                     sumQ.normalize();
                     
                     calibrationQuaternion.copy(sumQ).invert();
@@ -103,7 +102,7 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS ---
+        // --- THREE.JS SETUP ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -122,25 +121,47 @@
                 video.src = URL.createObjectURL(file);
                 video.play();
                 overlay.style.display = 'none';
+                resetBtn.style.display = 'block';
                 if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            isCalibrated = false;
+            samples = [];
+            statusText.innerText = "HOLD STILL...";
+            startBtn.style.display = "block";
+            startSensors();
         });
 
         function animate() {
             requestAnimationFrame(animate);
             if (isCalibrated) {
-                // Combine: Current Sensor * Calibration Offset
+                // Apply the calibration offset
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // Remap result to world space
-                // This specific remapping handles the "Tilt is now Yaw" problem
-                const worldQ = new THREE.Quaternion(-resultQ.y, resultQ.x, resultQ.z, resultQ.w);
+                // FINAL REMAP: Swapping Z and Y and flipping signs for Landscape
+                // resultQ.x = Up/Down
+                // resultQ.y = Roll (Shoulder Tilt) -> We move this to Tilt slot
+                // resultQ.z = Yaw (Left/Right) -> We move this to Yaw slot
+                const worldQ = new THREE.Quaternion(
+                    resultQ.x,    // Pitch
+                    -resultQ.z,   // Yaw (Left/Right) - mapped from hardware Z
+                    resultQ.y,    // Roll (Tilt) - mapped from hardware Y
+                    resultQ.w
+                );
                 
-                camera.quaternion.slerp(worldQ, 0.15); 
+                camera.quaternion.slerp(worldQ, 0.2); 
             }
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
