@@ -3,39 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Professional Landscape</title>
+    <title>360 VR - Fixed Landscape</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             text-align: center; z-index: 10; background: rgba(0,0,0,0.9);
-            padding: 25px; border-radius: 15px; border: 2px solid #444; width: 70%;
+            padding: 25px; border-radius: 15px; border: 2px solid #444; width: 75%;
         }
         .btn {
-            display: block; width: 100%; padding: 12px; margin: 10px 0;
+            display: block; width: 100%; padding: 15px; margin: 10px 0;
             background: #2196F3; border: none; color: white;
             border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px;
         }
         #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; }
-        #resetBtn {
-            position: fixed; bottom: 20px; right: 20px; z-index: 100;
-            width: 50px; height: 50px; border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2); border: 1px solid white;
-            color: white; font-size: 20px; cursor: pointer; display: none;
-        }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1>360 LANDSCAPE VR</h1>
-        <div id="status">Hold phone in Landscape & Stay Still</div>
-        <button id="startBtn" class="btn">START CALIBRATION</button>
+        <h1>360 VR SENSOR FIX</h1>
+        <div id="status">Hold phone in Landscape (Buttons on right/left)</div>
+        <button id="startBtn" class="btn">START & CALIBRATE</button>
         <label for="videoUpload" class="btn" style="background: #4CAF50;">LOAD 360 VIDEO</label>
         <input type="file" id="videoUpload" accept="video/*" style="display:none">
     </div>
 
-    <button id="resetBtn">🔄</button>
     <video id="videoSource" loop crossorigin="anonymous" playsinline style="display:none"></video>
 
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
@@ -46,12 +39,14 @@
         const fileInput = document.getElementById('videoUpload');
         const startBtn = document.getElementById('startBtn');
         const statusText = document.getElementById('status');
-        const resetBtn = document.getElementById('resetBtn');
 
         let targetQuaternion = new THREE.Quaternion();
         let calibrationQuaternion = new THREE.Quaternion();
         let isCalibrated = false;
-        let samples = { a: [], b: [], g: [] };
+        let samples = [];
+
+        // Constants for conversion
+        const rad = Math.PI / 180;
 
         async function startSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -60,48 +55,45 @@
             }
 
             window.addEventListener('deviceorientation', (e) => {
-                const toRad = Math.PI / 180;
-                
-                // IN LANDSCAPE:
-                // e.alpha is still Yaw (turning around)
-                // e.gamma becomes Pitch (looking up/down)
-                // e.beta becomes Roll (shoulder tilt)
-                
-                const alpha = e.alpha * toRad; 
-                const beta = e.beta * toRad;   
-                const gamma = e.gamma * toRad; 
+                // THE CORE FIX:
+                // We create a quaternion based on the RAW sensor data
+                // Browser 'DeviceOrientation' uses Z-X-Y intrinsic ordering
+                const z = e.alpha * rad; 
+                const x = e.beta * rad;  
+                const y = e.gamma * rad; 
 
-                // We use 'YXZ' order: Y(Yaw), X(Pitch), Z(Roll)
-                // We swap beta and gamma because the phone is sideways
-                const euler = new THREE.Euler(-gamma, alpha, beta, 'YXZ');
-                
+                const deviceQuaternion = new THREE.Quaternion();
+                const euler = new THREE.Euler(x, y, z, 'ZXY'); 
+                deviceQuaternion.setFromEuler(euler);
+
+                // We rotate the sensor frame 90 degrees around the Z axis 
+                // to account for Landscape holding
+                const landscapeCorrection = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+                const finalQ = deviceQuaternion.multiply(landscapeCorrection);
+
                 if (!isCalibrated) {
-                    samples.a.push(e.alpha || 0);
-                    samples.b.push(e.beta || 0);
-                    samples.g.push(e.gamma || 0);
+                    samples.push(finalQ.clone());
                     return;
                 }
 
-                targetQuaternion.setFromEuler(euler);
+                targetQuaternion.copy(finalQ);
             });
 
             let count = 3;
             const timer = setInterval(() => {
-                statusText.innerText = `Calibrating: ${count}s`;
+                statusText.innerText = `CALIBRATING: ${count}s`;
                 count--;
                 if (count < 0) {
                     clearInterval(timer);
-                    const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
                     
-                    // Set the baseline "Zero" point
-                    const avgEuler = new THREE.Euler(
-                        -avg(samples.g) * (Math.PI/180),
-                        avg(samples.a) * (Math.PI/180),
-                        avg(samples.b) * (Math.PI/180),
-                        'YXZ'
-                    );
-                    calibrationQuaternion.setFromEuler(avgEuler).invert();
+                    // Average the samples for calibration
+                    const sumQ = new THREE.Quaternion(0, 0, 0, 0);
+                    samples.forEach(q => {
+                        sumQ.x += q.x; sumQ.y += q.y; sumQ.z += q.z; sumQ.w += q.w;
+                    });
+                    sumQ.normalize();
                     
+                    calibrationQuaternion.copy(sumQ).invert();
                     isCalibrated = true;
                     statusText.innerText = "CALIBRATED";
                     startBtn.style.display = "none";
@@ -111,7 +103,7 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS SCENE SETUP ---
+        // --- THREE.JS ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -130,33 +122,25 @@
                 video.src = URL.createObjectURL(file);
                 video.play();
                 overlay.style.display = 'none';
-                resetBtn.style.display = 'block';
                 if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             }
-        });
-
-        resetBtn.addEventListener('click', () => {
-            isCalibrated = false;
-            samples = { a: [], b: [], g: [] };
-            startSensors();
         });
 
         function animate() {
             requestAnimationFrame(animate);
             if (isCalibrated) {
-                // Shortest path rotation logic
-                const finalRotation = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
-                camera.quaternion.slerp(finalRotation, 0.2); 
+                // Combine: Current Sensor * Calibration Offset
+                const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
+                
+                // Remap result to world space
+                // This specific remapping handles the "Tilt is now Yaw" problem
+                const worldQ = new THREE.Quaternion(-resultQ.y, resultQ.x, resultQ.z, resultQ.w);
+                
+                camera.quaternion.slerp(worldQ, 0.15); 
             }
             renderer.render(scene, camera);
         }
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
