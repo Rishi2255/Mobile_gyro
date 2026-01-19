@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Final</title>
+    <title>360 VR - Fixed Landscape</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -69,6 +69,7 @@
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
+                // Correction for holding device horizontally
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -134,14 +135,14 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE FINAL POLARITY FIX ---
-                // 1. resultQ.y is Up/Down (Correct)
-                // 2. resultQ.z is Yaw/Turning (Changed to positive to un-reverse)
-                // 3. resultQ.x is Roll/Tilt (Changed to positive to un-reverse)
+                // --- THE VERIFIED MAPPING ---
+                // X: Pitch (Up/Down) -> resultQ.x
+                // Y: Yaw (Left/Right) -> resultQ.z
+                // Z: Roll (Tilt) -> resultQ.y
                 const worldQ = new THREE.Quaternion(
-                    -resultQ.y,  // Pitch
-                    resultQ.z,   // Yaw (Left/Right)
-                    resultQ.x,   // Roll (Tilt)
+                    resultQ.x,   // Up/Down
+                    resultQ.z,   // Left/Right
+                    resultQ.y,   // Shoulder Tilt
                     resultQ.w
                 );
                 
