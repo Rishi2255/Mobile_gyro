@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Fixed Orientation</title>
+    <title>360 VR - Fixed Landscape</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -69,7 +69,6 @@
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Initial Landscape correction
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -135,15 +134,13 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE 90-DEGREE SHIFT MAPPING ---
-                // Based on your specific feedback:
-                // 1. Up/Down (X) now comes from the inverted resultQ.y
-                // 2. Left/Right (Y) now comes from resultQ.x
-                // 3. Tilt (Z) now comes from resultQ.z
+                // --- THE YAW/ROLL SWAP FIX ---
+                // resultQ.y was previously causing Up/Down, we moved it.
+                // Now we swap the other two to fix the "Right turn gives Tilt" problem.
                 const worldQ = new THREE.Quaternion(
-                    -resultQ.y,  // Corrects Up/Down
-                    resultQ.x,   // Corrects Left/Right
-                    resultQ.z,   // Corrects Tilt
+                    -resultQ.y,  // Keep Up/Down on Y-input (Fixed from previous step)
+                    -resultQ.z,  // Move Z-input to Yaw (Left/Right)
+                    -resultQ.x,  // Move X-input to Roll (Tilt)
                     resultQ.w
                 );
                 
