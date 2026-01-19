@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Final Corrected</title>
+    <title>360 VR - High FPS Pro</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -28,7 +28,7 @@
 <body>
 
     <div id="overlay">
-        <h1>360 VR LANDSCAPE</h1>
+        <h1>360 VR HIGH-FPS</h1>
         <div id="status">Hold phone in Landscape Mode</div>
         <button id="startBtn" class="btn">START & CALIBRATE</button>
         <label for="videoUpload" class="btn" style="background: #4CAF50;">LOAD 360 VIDEO</label>
@@ -69,7 +69,6 @@
                 const euler = new THREE.Euler(x, y, z, 'ZXY'); 
                 deviceQ.setFromEuler(euler);
 
-                // Correct for Landscape holding
                 const landscapeCorr = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
                 const finalQ = deviceQ.multiply(landscapeCorr);
 
@@ -99,15 +98,29 @@
 
         startBtn.addEventListener('click', startSensors);
 
+        // --- PERFORMANCE OPTIMIZED THREE.JS SETUP ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1100);
+        
+        // 1. Disable Antialiasing for a massive FPS boost on mobile
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: false, 
+            precision: 'lowp', // Use lower precision shaders for performance
+            powerPreference: 'high-performance' 
+        });
+        renderer.setPixelRatio(window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio); // Cap pixel ratio
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const geometry = new THREE.SphereGeometry(1000, 60, 40);
+        const geometry = new THREE.SphereGeometry(1000, 32, 32); // Lowered segments for speed
         geometry.scale(-1, 1, 1); 
+        
         const videoTexture = new THREE.VideoTexture(video);
+        // 2. Set filters to Linear for faster texture sampling
+        videoTexture.minFilter = THREE.LinearFilter;
+        videoTexture.magFilter = THREE.LinearFilter;
+        videoTexture.format = THREE.RGBFormat;
+
         const sphere = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: videoTexture }));
         scene.add(sphere);
 
@@ -123,28 +136,28 @@
         });
 
         resetBtn.addEventListener('click', () => {
-            isCalibrated = false;
-            samples = [];
+            isCalibrated = false; samples = [];
             statusText.innerText = "HOLD STILL...";
             startBtn.style.display = "block";
             startSensors();
         });
 
         function animate() {
+            // This loop runs at the native refresh rate (60Hz, 90Hz, or 120Hz)
             requestAnimationFrame(animate);
+            
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
-                
-                // --- THE INVERSION FIX ---
-                // We added a minus sign (-) to resultQ.y to flip the Up/Down direction.
                 const worldQ = new THREE.Quaternion(
-                    -resultQ.y,  // Inverted: Up is now Up, Down is now Down
-                    resultQ.z,   // Left/Right
-                    resultQ.x,   // Shoulder Tilt
+                    -resultQ.y,
+                    resultQ.z,
+                    resultQ.x,
                     resultQ.w
                 );
                 
-                camera.quaternion.slerp(worldQ, 0.15); 
+                // 3. High Sensitivity: Increased slerp factor from 0.15 to 0.4
+                // This reduces "lag" and makes the movement feel faster.
+                camera.quaternion.slerp(worldQ, 0.4); 
             }
             renderer.render(scene, camera);
         }
