@@ -3,35 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 Mobile VR Player</title>
+    <title>360 VR - Landscape Pro</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             text-align: center; z-index: 10; background: rgba(0,0,0,0.9);
-            padding: 30px; border-radius: 15px; border: 2px solid #444; width: 85%;
+            padding: 25px; border-radius: 15px; border: 2px solid #444; width: 70%;
         }
         .btn {
-            display: block; width: 100%; padding: 15px; margin: 10px 0;
+            display: block; width: 100%; padding: 12px; margin: 10px 0;
             background: #2196F3; border: none; color: white;
             border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px;
         }
-        #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; }
+        #status { font-size: 0.9em; color: #ff9800; margin-bottom: 10px; text-transform: uppercase; }
         #resetBtn {
-            position: fixed; bottom: 30px; right: 30px; z-index: 100;
-            width: 60px; height: 60px; border-radius: 50%;
-            background: rgba(255, 255, 255, 0.3); border: 2px solid white;
-            color: white; font-size: 24px; cursor: pointer; display: none;
+            position: fixed; bottom: 20px; right: 20px; z-index: 100;
+            width: 50px; height: 50px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2); border: 1px solid white;
+            color: white; font-size: 20px; cursor: pointer; display: none;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1>MOBILE VR</h1>
-        <div id="status">Hold phone still and press start</div>
-        <button id="startBtn" class="btn">1. START & CALIBRATE</button>
-        <label for="videoUpload" class="btn" style="background: #4CAF50;">2. LOAD 360 VIDEO</label>
+        <h1>360 LANDSCAPE VR</h1>
+        <div id="status">Hold phone in Landscape & Stay Still</div>
+        <button id="startBtn" class="btn">START CALIBRATION</button>
+        <label for="videoUpload" class="btn" style="background: #4CAF50;">LOAD 360 VIDEO</label>
         <input type="file" id="videoUpload" accept="video/*" style="display:none">
     </div>
 
@@ -53,12 +53,13 @@
         let isCalibrated = false;
         let samples = { a: [], b: [], g: [] };
 
-        // --- SENSORS ---
+        // --- SENSOR MAPPING FOR LANDSCAPE ---
         async function startSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const resp = await DeviceOrientationEvent.requestPermission();
                 if (resp !== 'granted') return;
             }
+
             window.addEventListener('deviceorientation', (e) => {
                 if (!isCalibrated) {
                     samples.a.push(e.alpha || 0);
@@ -66,22 +67,35 @@
                     samples.g.push(e.gamma || 0);
                     return;
                 }
-                // AXIS MAPPING FIX
-                targetRot.y = -(e.alpha - calibrationData.alpha) * (Math.PI/180); // Yaw
-                targetRot.x = -(e.beta - calibrationData.beta) * (Math.PI/180);    // Pitch
-                targetRot.z = (e.gamma - calibrationData.gamma) * (Math.PI/180); // Roll
+
+                const toRad = Math.PI / 180;
+                
+                // Relative movement
+                let a = (e.alpha - calibrationData.alpha);
+                let b = (e.beta - calibrationData.beta);
+                let g = (e.gamma - calibrationData.gamma);
+
+                /**
+                 * LANDSCAPE MAPPING LOGIC:
+                 * 1. Yaw (Left/Right) is Alpha.
+                 * 2. In Landscape, the phone's "Gamma" actually controls Up/Down.
+                 * 3. The phone's "Beta" controls the side-to-side tilt.
+                 */
+                targetRot.y = -a * toRad; // Left/Right (Inverted to fix swap)
+                targetRot.x = -g * toRad; // Up/Down (Mapped to Gamma in Landscape)
+                targetRot.z = b * toRad;  // Tilt (Mapped to Beta in Landscape)
             });
 
             let count = 3;
             const timer = setInterval(() => {
-                statusText.innerText = `CALIBRATING: ${count}...`;
+                statusText.innerText = `Calibrating: ${count}s`;
                 count--;
                 if (count < 0) {
                     clearInterval(timer);
-                    const avg = arr => arr.reduce((a,b) => a+b, 0) / arr.length;
+                    const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
                     calibrationData = { alpha: avg(samples.a), beta: avg(samples.b), gamma: avg(samples.g) };
                     isCalibrated = true;
-                    statusText.innerText = "READY";
+                    statusText.innerText = "CALIBRATED";
                     startBtn.style.display = "none";
                 }
             }, 1000);
@@ -89,7 +103,7 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS ---
+        // --- THREE.JS SCENE ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -97,7 +111,7 @@
         document.body.appendChild(renderer.domElement);
 
         const cameraGroup = new THREE.Group();
-        cameraGroup.rotation.order = 'YXZ'; // Important for mobile sensors
+        cameraGroup.rotation.order = 'YXZ'; 
         scene.add(cameraGroup);
         cameraGroup.add(camera);
 
@@ -121,18 +135,26 @@
         resetBtn.addEventListener('click', () => {
             isCalibrated = false;
             samples = { a: [], b: [], g: [] };
+            statusText.innerText = "HOLD STILL...";
+            startBtn.style.display = "block";
             startSensors();
         });
 
         function animate() {
             requestAnimationFrame(animate);
-            // Smooth Interpolation (Slerp-like)
-            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.15;
-            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.15;
-            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.15;
+            // Smoothly interpolate to the target rotation (adds a high-quality feel)
+            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.2;
+            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.2;
+            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.2;
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
