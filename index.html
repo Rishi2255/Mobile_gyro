@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Fixed Landscape</title>
+    <title>360 VR - Landscape Final</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -134,13 +134,14 @@
             if (isCalibrated) {
                 const resultQ = new THREE.Quaternion().copy(targetQuaternion).multiply(calibrationQuaternion);
                 
-                // --- THE YAW/ROLL SWAP FIX ---
-                // resultQ.y was previously causing Up/Down, we moved it.
-                // Now we swap the other two to fix the "Right turn gives Tilt" problem.
+                // --- THE FINAL POLARITY FIX ---
+                // 1. resultQ.y is Up/Down (Correct)
+                // 2. resultQ.z is Yaw/Turning (Changed to positive to un-reverse)
+                // 3. resultQ.x is Roll/Tilt (Changed to positive to un-reverse)
                 const worldQ = new THREE.Quaternion(
-                    -resultQ.y,  // Keep Up/Down on Y-input (Fixed from previous step)
-                    -resultQ.z,  // Move Z-input to Yaw (Left/Right)
-                    -resultQ.x,  // Move X-input to Roll (Tilt)
+                    -resultQ.y,  // Pitch
+                    resultQ.z,   // Yaw (Left/Right)
+                    resultQ.x,   // Roll (Tilt)
                     resultQ.w
                 );
                 
