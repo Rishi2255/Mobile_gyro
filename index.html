@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>360 VR - Landscape Pro</title>
+    <title>360 VR - Landscape Final</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #overlay { 
@@ -53,7 +53,6 @@
         let isCalibrated = false;
         let samples = { a: [], b: [], g: [] };
 
-        // --- SENSOR MAPPING FOR LANDSCAPE ---
         async function startSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const resp = await DeviceOrientationEvent.requestPermission();
@@ -70,20 +69,14 @@
 
                 const toRad = Math.PI / 180;
                 
-                // Relative movement
                 let a = (e.alpha - calibrationData.alpha);
                 let b = (e.beta - calibrationData.beta);
                 let g = (e.gamma - calibrationData.gamma);
 
-                /**
-                 * LANDSCAPE MAPPING LOGIC:
-                 * 1. Yaw (Left/Right) is Alpha.
-                 * 2. In Landscape, the phone's "Gamma" actually controls Up/Down.
-                 * 3. The phone's "Beta" controls the side-to-side tilt.
-                 */
-                targetRot.y = -a * toRad; // Left/Right (Inverted to fix swap)
-                targetRot.x = -g * toRad; // Up/Down (Mapped to Gamma in Landscape)
-                targetRot.z = b * toRad;  // Tilt (Mapped to Beta in Landscape)
+                // --- FINAL LANDSCAPE MAPPING ---
+                targetRot.y = a * toRad;  // Left/Right (Minus removed to fix swap)
+                targetRot.x = -g * toRad; // Up/Down (Gamma in Landscape)
+                targetRot.z = b * toRad;  // Tilt (Beta in Landscape)
             });
 
             let count = 3;
@@ -103,7 +96,6 @@
 
         startBtn.addEventListener('click', startSensors);
 
-        // --- THREE.JS SCENE ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -142,10 +134,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            // Smoothly interpolate to the target rotation (adds a high-quality feel)
-            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.2;
-            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.2;
-            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.2;
+            cameraGroup.rotation.x += (targetRot.x - cameraGroup.rotation.x) * 0.15;
+            cameraGroup.rotation.y += (targetRot.y - cameraGroup.rotation.y) * 0.15;
+            cameraGroup.rotation.z += (targetRot.z - cameraGroup.rotation.z) * 0.15;
             renderer.render(scene, camera);
         }
         animate();
